@@ -32,13 +32,13 @@ import torchvision
 # In[2]:
 
 
-cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
-length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-print(length)
-print(width)
-print(height)
+# cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
+# length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+# width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+# height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+# print(length)
+# print(width)
+# print(height)
 
 
 # In[3]:
@@ -51,32 +51,50 @@ print(torch.__version__)
 
 # ### Создание класса датасета
 
-# In[4]:
+# In[104]:
 
 
 class LISADataset(object):
     def __init__(self):
         # загрузка датасета аннотаций для bounding box'ов
-        self.df = pd.read_csv("LISA\Annotations\Annotations\dayTrain\dayClip1\\frameAnnotationsBOX.csv", sep = ';')
-        # упорядоченный список названий кадров из одной папки (пока что)
-        imgs_temp = list(sorted(os.listdir(os.path.join("LISA\dayTrain\dayTrain\dayClip1", "frames"))))
-        self.imgs = [imgs_temp[i] for i in self.df["Origin frame number"].unique()]
+        for i in range(1,14):
+            folder = "dayClip"+str(i)
+            annotations_path = "LISA/Annotations/Annotations/dayTrain/"+folder+"/frameAnnotationsBOX.csv"
+            df_i = pd.read_csv(annotations_path, sep = ';')
+    
+            images_path = "LISA/dayTrain/dayTrain/"+folder+"/frames"
+            imgs_temp = list(sorted(os.listdir(images_path)))
+            imgs_i = [imgs_temp[i] for i in df_i["Origin frame number"].unique()]
+    
+            if i==1:
+                self.df = df_i.copy()
+                self.imgs = imgs_i
+            else:
+                self.df = pd.concat([df, df_i], ignore_index = True)
+                self.imgs = imgs + imgs_i
 
     def __getitem__(self, idx):
         # load images
-        img_path = os.path.join("LISA\dayTrain\dayTrain\dayClip1", "frames", self.imgs[idx])
+        print(idx)
+        img_folder = self.imgs[idx][:9]
+        if img_folder[-1]=='-':
+            img_folder = img_folder[:-1]
+        print(self.imgs[idx])
+            
+        img_path = os.path.join("LISA\dayTrain\dayTrain", img_folder, "frames", self.imgs[idx])
         img = cv.imread(img_path)
         img = cv.cvtColor(img, cv.COLOR_BGR2RGB)/255
 
         # get bounding box coordinates for each mask
-        num_objs = len(self.df[self.df["Origin frame number"]==idx])
+        num_objs = len(self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]])
         boxes = []
         for i in range(num_objs):
-            x_left = list(self.df[self.df["Origin frame number"]==idx]["Upper left corner X"])[i]
-            x_right = list(self.df[self.df["Origin frame number"]==idx]["Lower right corner X"])[i]
-            y_left = list(self.df[self.df["Origin frame number"]==idx]["Upper left corner Y"])[i]
-            y_right = list(self.df[self.df["Origin frame number"]==idx]["Lower right corner Y"])[i]
+            x_left = list(self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]["Upper left corner X"])[i]
+            x_right = list(self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]["Lower right corner X"])[i]
+            y_left = list(self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]["Upper left corner Y"])[i]
+            y_right = list(self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]["Lower right corner Y"])[i]
             boxes.append([x_left, y_left, x_right, y_right])
+        print(boxes)
 
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
@@ -84,9 +102,6 @@ class LISADataset(object):
         labels = torch.ones((num_objs,), dtype=torch.int64)
 
         image_id = torch.tensor([idx])
-        if num_objs == 0:
-            print(idx)
-            boxes = torch.as_tensor([[0,0,0,0]], dtype=torch.float32)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
         target = {}
@@ -102,14 +117,14 @@ class LISADataset(object):
         return len(self.imgs)
 
 
-# In[5]:
+# In[105]:
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# In[6]:
+# In[106]:
 
 
 def data_loader(batch_size, transform = None, test_size = 0.2):
@@ -133,19 +148,19 @@ def data_loader(batch_size, transform = None, test_size = 0.2):
 
 # Тут я тестирую созданные функции, можно не обращать внимание
 
-# In[58]:
+# In[107]:
 
 
 torch.cuda.empty_cache()
 
 
-# In[7]:
+# In[108]:
 
 
 device = torch.device('cuda:0')
 
 
-# In[8]:
+# In[109]:
 
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -168,19 +183,19 @@ with torch.no_grad():
     predictions = model(images)           # Returns predictions
 
 
-# In[9]:
+# In[110]:
 
 
 print(predictions)
 
 
-# In[10]:
+# In[111]:
 
 
 image = images[0].cpu().numpy()
 
 
-# In[11]:
+# In[112]:
 
 
 def displayImage(image, boxes):
@@ -200,7 +215,7 @@ def displayImage(image, boxes):
     plt.show()
 
 
-# In[12]:
+# In[113]:
 
 
 displayImage(image, predictions[0]['boxes'])
