@@ -27,18 +27,19 @@ import os
 import pandas as pd
 from torchvision import transforms
 import torchvision
+import json
 
 
-# In[2]:
+# In[19]:
 
 
-# cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
-# length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-# width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-# height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-# print(length)
-# print(width)
-# print(height)
+cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
+length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+print(length)
+print("width",width)
+print("height",height)
 
 
 # In[3]:
@@ -51,7 +52,7 @@ print(torch.__version__)
 
 # ### Создание класса датасета
 
-# In[104]:
+# In[4]:
 
 
 class LISADataset(object):
@@ -70,8 +71,8 @@ class LISADataset(object):
                 self.df = df_i.copy()
                 self.imgs = imgs_i
             else:
-                self.df = pd.concat([df, df_i], ignore_index = True)
-                self.imgs = imgs + imgs_i
+                self.df = pd.concat([self.df, df_i], ignore_index = True)
+                self.imgs = self.imgs + imgs_i
 
     def __getitem__(self, idx):
         # load images
@@ -117,14 +118,14 @@ class LISADataset(object):
         return len(self.imgs)
 
 
-# In[105]:
+# In[5]:
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# In[106]:
+# In[6]:
 
 
 def data_loader(batch_size, transform = None, test_size = 0.2):
@@ -144,23 +145,77 @@ def data_loader(batch_size, transform = None, test_size = 0.2):
     
 
 
+# # Предсказание для видео
+
+# In[32]:
+
+
+def video_predict(path, model):
+    cap = cv.VideoCapture(path) # Вывод с видео файла
+    length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+    dict_predictions = {}
+    model.eval()
+    for i in range(3):
+        ret, frame = cap.read()
+        with torch.no_grad():
+            frame = torch.tensor(frame, dtype=torch.float32)
+            frame = [torch.reshape(frame, (3, frame.shape[0], frame.shape[1])).to(device)]
+            prediction = model(frame)
+            dict_predictions[i]=[]
+            for j, box in enumerate(prediction[0]['boxes']):
+                dict_predictions[i].append({j:list(map(str,box.cpu().numpy().astype(np.int32)))})
+    json_file_name = 'test_pred_'+path[8:15]+'.txt'
+    with open(json_file_name, 'w') as outfile:
+        json.dump(dict_predictions, outfile)
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
 # # Test
 
 # Тут я тестирую созданные функции, можно не обращать внимание
 
-# In[107]:
+# In[6]:
 
 
 torch.cuda.empty_cache()
 
 
-# In[108]:
+# In[7]:
 
 
 device = torch.device('cuda:0')
 
 
-# In[109]:
+# In[8]:
 
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -172,53 +227,128 @@ images = list(torch.reshape(image, (3, image.shape[0], image.shape[1])).to(devic
 targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 model.to(device)
 model.train()
-output = model(images,targets)   # Returns losses and detections
+
+
+# ## Предсказания для видео
+
+# In[32]:
+
+
+def video_predict(path, model):
+    cap = cv.VideoCapture(path) # Вывод с видео файла
+    length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+    dict_predictions = {}
+    model.eval()
+    for i in range(3):
+        ret, frame = cap.read()
+        with torch.no_grad():
+            frame = torch.tensor(frame, dtype=torch.float32)
+            frame = [torch.reshape(frame, (3, frame.shape[0], frame.shape[1])).to(device)]
+            prediction = model(frame)
+            dict_predictions[i]=[]
+            for j, box in enumerate(prediction[0]['boxes']):
+                dict_predictions[i].append({j:list(map(str,box.cpu().numpy().astype(np.int32)))})
+    json_file_name = 'test_pred_'+path[8:15]+'.txt'
+    with open(json_file_name, 'w') as outfile:
+        json.dump(dict_predictions, outfile)
+
+
+# In[33]:
+
+
+video_predict("phase_1/video_0.MP4", model) #пример использования
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
 
 # For inference
-images,targets = next(iter(test))
-images = list(torch.reshape(image, (3, image.shape[0], image.shape[1])).to(device) for image in images)
-targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 model.eval()
+i = 0
 with torch.no_grad():
+    images,targets = next(iter(test))
+    images = list(torch.reshape(image, (3, image.shape[0], image.shape[1])).to(device) for image in images)
+    targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
     predictions = model(images)           # Returns predictions
 
 
-# In[110]:
+# сначала полностью заполняю словарь для ВСЕХ кадров видео, а потом уже записываю его в файл
+
+# In[82]:
 
 
 print(predictions)
 
 
-# In[111]:
+# In[41]:
+
+
+dict_predictions = {}
+dict_predictions[0]=[]
+for j, box in enumerate(predictions[0]['boxes']):
+    dict_predictions[0].append({j:list(map(str,box.cpu().numpy().astype(np.int32)))})
+    # тут добавить определение цвета и влияния светофора позже
+
+with open('test_pred.txt', 'w') as outfile:
+    json.dump(dict_predictions, outfile)
+
+
+# In[77]:
+
+
+with open('test_pred.txt') as json_file:
+    data = json.load(json_file)
+    #для одного кадра
+    boxes = []
+    for box in data[str(0)]:
+        value = list(box.values())[0]
+        boxes.append(list(map(int, value)))
+    displayImage(images[0].cpu().numpy(), boxes, False)
+
+
+# In[78]:
 
 
 image = images[0].cpu().numpy()
 
 
-# In[112]:
+# In[79]:
 
 
-def displayImage(image, boxes):
-    boxes = boxes.cpu().numpy().astype(np.int32)
-    image = np.reshape(image, (image.shape[1],image.shape[2], image.shape[0]))
+def displayImage(image, boxes, to_cpu):
+    if to_cpu:
+        boxes = boxes.cpu().numpy().astype(np.int32)
+    image_temp = np.reshape(image, (image.shape[1],image.shape[2], image.shape[0]))
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
 
     for box in boxes:
-        cv.rectangle(image,
+        cv.rectangle(image_temp,
                       (box[2], box[3]),
                       (box[0], box[1]),
                       (220, 0, 0), 2)
 
     ax.set_axis_off()
-    ax.imshow(image)
+    ax.imshow(image_temp)
 
     plt.show()
 
 
-# In[113]:
+# In[81]:
 
 
-displayImage(image, predictions[0]['boxes'])
+displayImage(image, predictions[0]['boxes'], True)
 
 
 # # Препроцессинг видео
