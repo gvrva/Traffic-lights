@@ -33,16 +33,16 @@ import json
 # In[19]:
 
 
-cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
-length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-print(length)
-print("width",width)
-print("height",height)
+# cap = cv.VideoCapture("phase_1/video_0.MP4") # Вывод с видео файла
+# length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+# width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+# height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+# print(length)
+# print("width",width)
+# print("height",height)
 
 
-# In[3]:
+# In[2]:
 
 
 print(torch.__version__)
@@ -52,7 +52,7 @@ print(torch.__version__)
 
 # ### Создание класса датасета
 
-# In[4]:
+# In[3]:
 
 
 class LISADataset(object):
@@ -118,14 +118,14 @@ class LISADataset(object):
         return len(self.imgs)
 
 
-# In[5]:
+# In[4]:
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# In[6]:
+# In[5]:
 
 
 def data_loader(batch_size, transform = None, test_size = 0.2):
@@ -147,16 +147,18 @@ def data_loader(batch_size, transform = None, test_size = 0.2):
 
 # # Предсказание для видео
 
-# In[32]:
+# In[16]:
 
 
 def video_predict(path, model):
     cap = cv.VideoCapture(path) # Вывод с видео файла
-    length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
     dict_predictions = {}
     model.eval()
-    for i in range(3):
+    i=0
+    while True:
         ret, frame = cap.read()
+        if not ret:
+            break
         with torch.no_grad():
             frame = torch.tensor(frame, dtype=torch.float32)
             frame = [torch.reshape(frame, (3, frame.shape[0], frame.shape[1])).to(device)]
@@ -164,21 +166,45 @@ def video_predict(path, model):
             dict_predictions[i]=[]
             for j, box in enumerate(prediction[0]['boxes']):
                 dict_predictions[i].append({j:list(map(str,box.cpu().numpy().astype(np.int32)))})
+                #тут прикрутить определение цвета светофора
+                #определить влияние на полосу
+        i+=1
     json_file_name = 'test_pred_'+path[8:15]+'.txt'
     with open(json_file_name, 'w') as outfile:
         json.dump(dict_predictions, outfile)
 
 
-# In[ ]:
+# # Создание видео с box'ами
+
+# In[46]:
 
 
+#без сглаживания
+def display_video(source_video_path, target_video, vid_boxes):
+    cap = cv.VideoCapture(source_video_path)
+    width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    i=0
+    out = cv.VideoWriter(target_video,cv.VideoWriter_fourcc(*'DIVX'), 30, (width, height))
+    with open(vid_boxes) as json_file:
+        data = json.load(json_file)
+        
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        boxes = []
+        for box in data[str(i)]:
+            value = list(box.values())[0]
+            boxes.append(list(map(int, value)))
+            
+        for box in boxes:
+            cv.rectangle(frame, (box[2], box[3]), (box[0], box[1]), (220, 0, 0), 3)
 
-
-
-# In[ ]:
-
-
-
+        out.write(frame)
+        i += 1
+        
+    out.release()
 
 
 # In[ ]:
@@ -209,13 +235,13 @@ def video_predict(path, model):
 torch.cuda.empty_cache()
 
 
-# In[7]:
+# In[10]:
 
 
 device = torch.device('cuda:0')
 
 
-# In[8]:
+# In[11]:
 
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -231,32 +257,117 @@ model.train()
 
 # ## Предсказания для видео
 
-# In[32]:
+# In[17]:
 
 
-def video_predict(path, model):
-    cap = cv.VideoCapture(path) # Вывод с видео файла
-    length = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-    dict_predictions = {}
-    model.eval()
-    for i in range(3):
+get_ipython().run_cell_magic('time', '', 'video_predict("phase_1/video_0.MP4", model) #пример использования')
+
+
+# In[42]:
+
+
+def display_video(source_video_path, target_video, vid_boxes):
+    cap = cv.VideoCapture(source_video_path)
+    width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+    i=0
+    out = cv.VideoWriter(target_video,cv.VideoWriter_fourcc(*'DIVX'), 30, (width, height))
+    with open(vid_boxes) as json_file:
+        data = json.load(json_file)
+        
+    while True:
         ret, frame = cap.read()
-        with torch.no_grad():
-            frame = torch.tensor(frame, dtype=torch.float32)
-            frame = [torch.reshape(frame, (3, frame.shape[0], frame.shape[1])).to(device)]
-            prediction = model(frame)
-            dict_predictions[i]=[]
-            for j, box in enumerate(prediction[0]['boxes']):
-                dict_predictions[i].append({j:list(map(str,box.cpu().numpy().astype(np.int32)))})
-    json_file_name = 'test_pred_'+path[8:15]+'.txt'
-    with open(json_file_name, 'w') as outfile:
-        json.dump(dict_predictions, outfile)
+        if not ret:
+            break
+        boxes = []
+        for box in data[str(i)]:
+            value = list(box.values())[0]
+            boxes.append(list(map(int, value)))
+            
+        for box in boxes:
+            cv.rectangle(frame, (box[2], box[3]), (box[0], box[1]), (220, 0, 0), 3)
+
+        out.write(frame)
+        i += 1
+        
+    out.release()
 
 
-# In[33]:
+# In[44]:
 
 
-video_predict("phase_1/video_0.MP4", model) #пример использования
+display_video("phase_1/video_0.MP4", 'video_0_boxes.avi', 'test_pred_video_0.txt')
+
+
+# ### запись реальных box'ов в файл для теста воспроизведения
+
+# In[45]:
+
+
+length = 2161
+
+df = pd.read_csv("LISA/Annotations/Annotations/dayTrain/dayClip1/frameAnnotationsBOX.csv", sep = ';')
+images_path = "LISA/dayTrain/dayTrain/dayClip1/frames"
+imgs = list(sorted(os.listdir(images_path)))
+out = cv.VideoWriter('train_video_boxes.avi',cv.VideoWriter_fourcc(*'DIVX'), 24, (1280, 960))
+
+for i in range(length):
+    
+    num_objs = len(df[df["Origin frame number"]==i])
+    img = cv.imread("LISA/dayTrain/dayTrain/dayClip1/frames/"+imgs[i])
+    if num_objs == 0:
+        out.write(img)
+        continue
+    
+    x_left = list(df[df["Origin frame number"]==i]["Upper left corner X"])
+    x_right = list(df[df["Origin frame number"]==i]["Lower right corner X"])
+    y_left = list(df[df["Origin frame number"]==i]["Upper left corner Y"])
+    y_right = list(df[df["Origin frame number"]==i]["Lower right corner Y"])
+    
+    for j in range(num_objs):
+        cv.rectangle(img, (x_right[j], y_right[j]), (x_left[j], y_left[j]), (220, 0, 0), 3)
+        
+    out.write(img)
+    
+out.release()
+
+
+# In[37]:
+
+
+images_path = "LISA/dayTrain/dayTrain/dayClip1/frames"
+imgs = list(sorted(os.listdir(images_path)))
+out = cv.VideoWriter('train_video_0.avi',cv.VideoWriter_fourcc(*'DIVX'), 24, (1280, 960))
+for i in range(length):
+    img = cv.imread("LISA/dayTrain/dayTrain/dayClip1/frames/"+imgs[i])
+    out.write(img)
+out.release()
+
+length = 2161
+
+df = pd.read_csv("LISA/Annotations/Annotations/dayTrain/dayClip1/frameAnnotationsBOX.csv", sep = ';')
+dict_box = {}
+
+for i in range(length):
+    dict_box[i]=[]
+    num_objs = len(df[df["Origin frame number"]==i])
+    
+    x_left = list(df[df["Origin frame number"]==i]["Upper left corner X"])
+    x_right = list(df[df["Origin frame number"]==i]["Lower right corner X"])
+    y_left = list(df[df["Origin frame number"]==i]["Upper left corner Y"])
+    y_right = list(df[df["Origin frame number"]==i]["Lower right corner Y"])
+    
+    for j in range(num_objs):
+        dict_box[i].append({j:[str(x_left[j]), str(y_left[j]), str(x_right[j]), str(y_right[j])]})
+json_file_name = 'train_true_boxes.txt'
+with open(json_file_name, 'w') as outfile:
+    json.dump(dict_box, outfile)
+
+
+# In[43]:
+
+
+display_video("train_video_0.avi", "func_train_video_boxes.avi", "train_true_boxes.txt")
 
 
 # In[ ]:
@@ -264,6 +375,14 @@ video_predict("phase_1/video_0.MP4", model) #пример использован
 
 
 
+
+# In[ ]:
+
+
+
+
+
+# # Черновики
 
 # In[ ]:
 
