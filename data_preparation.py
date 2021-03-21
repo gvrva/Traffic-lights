@@ -213,7 +213,35 @@ def data_loader(batch_size, transform = None, test_size = 0.2, yolo = False):
 
 # # Предсказание для видео
 
-# In[60]:
+# In[84]:
+
+
+def affect(boxes, height, width):
+    distances = []
+    areas = []
+    for box in boxes:
+        areas.append((box[2]-box[0])*(box[3]-box[1]))
+    max_area = max(areas)
+    for i, area in enumerate(areas):
+        if max_area/area>=3:
+            areas[i]=0
+            distances.append(1000)
+        else:
+            cx = (boxes[i][2]+boxes[i][0])/2
+            cy = (boxes[i][3]-boxes[i][1])/2
+            d = abs(cx-width/2)
+            distances.append(d)
+    affect_index = distances.index(min(distances))
+    affect_array = []
+    for i in range(len(distances)):
+        if i == affect_index:
+            affect_array.append(True)
+        else:
+            affect_array.append(False)
+    return affect_array
+
+
+# In[77]:
 
 
 #без сглаживания
@@ -228,22 +256,28 @@ def video_predict(path, json_path, model, device):
     dict_predictions = {}
     model.eval()
     i=0
-    colors = {1: "red", 2: "yellow", 3: "green"}
+    colors = {1: "red", 2: "yellow", 3: "green", 4: "unknown"}
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         with torch.no_grad():
             frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)/255
+            width = frame.shape[1]
+            height = frame.shape[0]
             frame = torch.tensor(frame, dtype=torch.float32)
             frame = [torch.reshape(frame, (3, frame.shape[0], frame.shape[1])).to(device)]
             
             prediction = model(frame)
             dict_predictions[i]=[]
-            for j, box in enumerate(prediction[0]['boxes']):
+            boxes = prediction[0]['boxes'].cpu().numpy().astype(np.int32)
+            
+            affect_list = affect(boxes, height, width)
+            
+            for j, box in enumerate(boxes):
                 dict_predictions[i].append(j)
                 dict_predictions[i][j] = {}
-                curr_box = list(map(str,box.cpu().numpy().astype(np.int32)))
+                curr_box = list(map(str,box))
                 
                 dict_predictions[i][j]["coords"] = curr_box
                 
@@ -253,7 +287,7 @@ def video_predict(path, json_path, model, device):
                 else:
                     dict_predictions[i][j]["state"] = colors[color]
                 
-                #определить влияние на полосу
+                dict_predictions[i][j]["affect"] = str(affect_list[j])
         i+=1
         
     with open(json_path, 'w') as outfile:
@@ -262,7 +296,7 @@ def video_predict(path, json_path, model, device):
 
 # # Создание видео с box'ами
 
-# In[67]:
+# In[96]:
 
 
 def video_display(source_video_path, target_video, vid_boxes, fps = 24):
@@ -280,6 +314,7 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
             break
         boxes = []
         colors = []
+        affects = []
         for tl_dict in data[str(i)]:
             box = tl_dict["coords"]
             boxes.append(list(map(int, box)))
@@ -292,10 +327,14 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
                 colors.append((0,255,0))
             if state == 'unknown':
                 colors.append((255,255,255))
+            affects.append(tl_dict["affect"])
             
-        for box, color in zip(boxes, colors):
+        for box, color, affect in zip(boxes, colors, affects):
             
-            cv.rectangle(frame, (box[2], box[3]), (box[0], box[1]), color, 3)
+            cv.rectangle(frame, (box[2], box[3]), (box[0], box[1]), color, 2)
+            if affect == 'True':
+                frame = cv.putText(frame, 'affect', (box[0], box[3]+20), fontFace = cv.FONT_HERSHEY_SIMPLEX,
+                                   fontScale = 0.5, thickness = 1, color = color)
 
         out.write(frame)
         i += 1
@@ -394,13 +433,13 @@ print(out)
 
 # ## Предсказания для видео
 
-# In[64]:
+# In[48]:
 
 
 get_ipython().run_cell_magic('time', '', 'video_predict("phase_1/video_0.MP4", "phase_1/video_0.txt", model, device) #пример использования')
 
 
-# In[66]:
+# In[55]:
 
 
 video_display("phase_1/video_0.MP4", "phase_1/video_0_boxes.MP4", "phase_1/video_0.txt", fps = 1)
@@ -432,129 +471,7 @@ video_display("phase_1/video_0.MP4", "phase_1/video_0_boxes.MP4", "phase_1/video
 display_video("train_video_0.avi", "func_train_video_boxes.avi", "train_true_boxes.txt")
 
 
-# In[48]:
-
-
-def crop_image(image, box):
-    cropped_image = image[box[1]:box[3], box[0]:box[2], :]
-    return cropped_image
-
-
-# In[115]:
-
-
-#собираем все вместе
-# def traffic_light_color(image, box):
-#     traf_light = crop_image(image, box)
-#     traf_light = cv.cvtColor(traf_light, cv.COLOR_BGR2RGB)
-#     traf_light_gray = cv.cvtColor(traf_light, cv.COLOR_BGR2GRAY)
-#     ret,thresh = cv.threshold(traf_light_gray,130,255,cv.THRESH_BINARY)
-#     black = np.zeros(thresh.shape, np.uint8)
-#     mean_val_out = cv.mean(traf_light,mask = thresh)
-    
-#     red = (255,0,0)
-#     green = (0,255,0)
-#     yellow = (255,255,0)
-
-#     red_dist = ((mean_val_out[0]-red[0])**2+(mean_val_out[1]-red[1])**2+(mean_val_out[2]-red[2])**2)**0.5
-#     yellow_dist = ((mean_val_out[0]-yellow[0])**2+(mean_val_out[1]-yellow[1])**2+(mean_val_out[2]-yellow[2])**2)**0.5
-#     green_dist = ((mean_val_out[0]-green[0])**2+(mean_val_out[1]-green[1])**2+(mean_val_out[2]-green[2])**2)**0.5
-    
-#     distances = [red_dist, yellow_dist, green_dist]
-#     color_id = distances.index(min(distances))
-#     if color_id == 0:
-#         return 'red'
-#     if color_id == 1:
-#         return 'yellow'
-#     if color_id == 2:
-#         return 'green'
-
-
-# In[49]:
-
-
-#учет положения огонька
-def traffic_light_color(image, box):
-    traf_light = crop_image(image, box)
-    traf_light = cv.cvtColor(traf_light, cv.COLOR_BGR2RGB)
-    traf_light_gray = cv.cvtColor(traf_light, cv.COLOR_BGR2GRAY)
-    ret,thresh = cv.threshold(traf_light_gray,120,255,cv.THRESH_BINARY)
-    
-    thresh = np.array(thresh)
-    
-    height = thresh.shape[0]
-    width = thresh.shape[1]
-    thresh_copy = thresh.copy()
-    for i in range(height):
-        if sum(thresh[i])>255*width*0.6:
-            thresh_copy[i] = thresh_copy[i]*0
-    for i in range(width):
-        if sum(thresh[:,i])>255*height*0.6:
-            thresh_copy[:,i] = thresh_copy[:,i]*0
-
-    cy = int(height/3)
-    r = thresh_copy[:cy].sum()
-    y = thresh_copy[cy:2*cy].sum()
-    g = thresh_copy[2*cy:].sum()
-    
-    light = [r,y,g]
-    color_id = light.index(max(light))
-    
-#     print(thresh)
-#     print(r,y,g)
-#     print()
-    
-    if color_id == 0:
-        return 'red'
-    if color_id == 1:
-        return 'yellow'
-    if color_id == 2:
-        return 'green'
-
-
-# In[ ]:
-
-
-# #учет положения огонька по контурам
-# def traffic_light_color(image, box):
-#     traf_light = crop_image(image, box)
-#     traf_light = cv.cvtColor(traf_light, cv.COLOR_BGR2RGB)
-#     traf_light_gray = cv.cvtColor(traf_light, cv.COLOR_BGR2GRAY)
-#     ret,thresh = cv.threshold(traf_light_gray,130,255,cv.THRESH_BINARY)
-    
-#     thresh = np.array(thresh)
-    
-#     height = thresh.shape[0]
-#     width = thresh.shape[1]
-#     thresh_copy = thresh.copy()
-#     for i in range(height):
-#         if sum(thresh[i])>255*width*0.5:
-#             thresh_copy[i] = thresh_copy[i]*0
-#     for i in range(width):
-#         if sum(thresh[:,i])>255*height*0.5:
-#             thresh_copy[:,i] = thresh_copy[:,i]*0
-
-#     cy = int(height/3)
-#     r = thresh_copy[:cy].sum()
-#     y = thresh_copy[cy:2*cy].sum()
-#     g = thresh_copy[2*cy:].sum()
-    
-#     light = [r,y,g]
-#     color_id = light.index(max(light))
-    
-# #     print(thresh)
-# #     print(r,y,g)
-# #     print()
-    
-#     if color_id == 0:
-#         return 'red'
-#     if color_id == 1:
-#         return 'yellow'
-#     if color_id == 2:
-#         return 'green'
-
-
-# In[46]:
+# In[86]:
 
 
 images_path = "LISA/dayTrain/dayTrain/dayClip1/frames"
@@ -564,6 +481,7 @@ out = cv.VideoWriter('train_videos_tests/clip1.avi',cv.VideoWriter_fourcc(*'DIVX
 length = len(imgs)
 df = pd.read_csv("LISA/Annotations/Annotations/dayTrain/dayClip1/frameAnnotationsBOX.csv", sep = ';')
 dict_box = {}
+label_dict_lisa = {"go":3, "warning":2, "stop":1, "stopLeft":1, "goLeft":3, "warningLeft":2}
 
 for i in range(length):
     img = cv.imread("LISA/dayTrain/dayTrain/dayClip1/frames/"+imgs[i])
@@ -577,14 +495,25 @@ for i in range(length):
     y_left = list(df[df["Origin frame number"]==i]["Upper left corner Y"])
     y_right = list(df[df["Origin frame number"]==i]["Lower right corner Y"])
     
-#     print(i)
+    if len(x_left)>0:
+
+        boxes = np.zeros((len(x_left),4))
+        boxes[:,0] = x_left
+        boxes[:,1] = y_left
+        boxes[:,2] = x_right
+        boxes[:,3] = y_right
+
+        affect_list = affect(boxes, 960, 1280)
+    
     for j in range(num_objs):
         dict_box[i].append(j)
         dict_box[i][j] = {}
         curr_box = [x_left[j], y_left[j], x_right[j], y_right[j]]
         dict_box[i][j]["coords"] = list(map(str,curr_box))
         
-        dict_box[i][j]["state"] = traffic_light_color(img,curr_box)
+        dict_box[i][j]["state"] = "red"
+        
+        dict_box[i][j]["affect"] = str(affect_list[j])
         
 out.release()
 
@@ -594,10 +523,22 @@ with open(json_file_name, 'w') as outfile:
     json.dump(dict_box, outfile)
 
 
-# In[47]:
+# In[97]:
 
 
-display_video('train_videos_tests/clip1.avi', 'train_videos_tests/clip1_boxes.avi', 'train_videos_tests/clip1_true_boxes.txt', 10)
+video_display('train_videos_tests/clip1.avi', 'train_videos_tests/clip1_boxes.avi', 'train_videos_tests/clip1_true_boxes.txt', 1)
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
 
 
 # In[46]:
