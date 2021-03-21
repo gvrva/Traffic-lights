@@ -16,7 +16,7 @@
 
 # Больше ничего с файлами делать не требуется
 
-# In[1]:
+# In[17]:
 
 
 import cv2 as cv
@@ -25,7 +25,6 @@ import numpy as np
 import torch
 import os
 import pandas as pd
-from torchvision import transforms
 import torchvision
 import json
 import albumentations as A
@@ -53,11 +52,11 @@ print(torch.__version__)
 
 # ### Создание класса датасета
 
-# In[55]:
+# In[25]:
 
 
-class LISADataset(object):
-    def __init__(self, transforms = None):
+class Dataset(object):
+    def __init__(self, transforms = None, yolo = False):
         # загрузка датасета аннотаций для bounding box'ов
         for i in range(1,14):
             folder = "dayClip"+str(i)
@@ -75,21 +74,38 @@ class LISADataset(object):
                 self.df = pd.concat([self.df, df_i], ignore_index = True)
                 self.imgs = self.imgs + imgs_i
         self.transforms = transforms
+        
+        coco_path = "COCO/traffic_lights_coco"
+        coco_imgs = list(sorted(os.listdir(coco_path)))
+        self.imgs = self.imgs + coco_imgs
+        
+        coco_df = pd.read_csv("COCO/annotations_coco/coco_traffic_lights.csv")
+        self.df = pd.concat([self.df, coco_df], ignore_index = True)
+        self.yolo = yolo
 
     def __getitem__(self, idx):
         # load images
-        img_folder = self.imgs[idx][:9]
-        if img_folder[-1]=='-':
-            img_folder = img_folder[:-1]
+        if self.imgs[idx][0]=='C':
+            img_path = "COCO/traffic_lights_coco/"+self.imgs[idx]
+            frame_df = self.df[self.df["Filename"]==img_path]
             
-        img_path = os.path.join("LISA\dayTrain\dayTrain", img_folder, "frames", self.imgs[idx])
+        else:
+            img_folder = self.imgs[idx][:9]
+            if img_folder[-1]=='-':
+                img_folder = img_folder[:-1]
+
+            img_path = "LISA/dayTrain/dayTrain/"+img_folder+"/frames/"+self.imgs[idx]
+            frame_df = self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]
+            
+            
+            
         img = cv.imread(img_path)
         img = cv.cvtColor(img, cv.COLOR_BGR2RGB)/255
         
-        label_dict = {"go": 3, "warning": 2, "stop": 1, "stopLeft": 1, "goLeft": 3, "warningLeft": 2}
+        label_dict_lisa = {"go":3, "warning":2, "stop":1, "stopLeft":1, "goLeft":3, "warningLeft":2}
+        label_dict_coco = {"green":3, "yellow":2, "red":1, "unknown":4}
 
         # get bounding box coordinates for each mask
-        frame_df = self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]
         num_objs = len(frame_df)
         boxes = []
         labels = []
@@ -101,8 +117,15 @@ class LISADataset(object):
         light = list(frame_df["Annotation tag"])
         
         for i in range(num_objs):
-            boxes.append([x_max[i], y_max[i], x_min[i], y_min[i]])
-            labels.append(label_dict[light[i]])
+            if self.yolo:
+                boxes.append([round((x_min[i]+x_max[i])/2),
+                             round((y_min[i]+y_max[i])/2),
+                             x_min[i]-x_max[i],
+                             y_min[i]+y_max[i]])
+                labels.append(label_dict_coco[light[i]])
+            else:
+                boxes.append([x_max[i], y_max[i], x_min[i], y_min[i]])
+                labels.append(label_dict_lisa[light[i]])
 
         # convert everything into a torch.Tensor
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
@@ -139,30 +162,42 @@ class LISADataset(object):
         return len(self.imgs)
 
 
-# In[56]:
+# In[10]:
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# In[58]:
+# In[11]:
 
 
-def getTrainTransform():
+def get_transform():
     return A.Compose([
         A.RandomCrop(width=300, height=300, p = 0.2),
         A.HorizontalFlip(p=0.5)
     ], bbox_params=A.BboxParams(format = 'pascal_voc', label_fields=['labels'], min_visibility = 0.5))
 
 
-# In[59]:
+# In[19]:
 
 
-def data_loader(batch_size, transform = None, test_size = 0.2):
+def get_transform_yolo():
+    return A.Compose([
+        A.RandomCrop(width=300, height=300, p = 0.2),
+        A.HorizontalFlip(p=0.5)
+    ], bbox_params=A.BboxParams(format = 'yolo', label_fields=['labels'], min_visibility = 0.5))
+
+
+# In[18]:
+
+
+def data_loader(batch_size, transform = None, test_size = 0.2, yolo = False):
     
-    dataset_train = LISADataset(transforms = transform)
-    dataset_test = LISADataset()
+    dataset_train = Dataset(transforms = transform, yolo = yolo)
+    dataset_test = Dataset(yolo = yolo)
+    
+    torch.manual_seed(123)
     indices = torch.randperm(len(dataset_train)).tolist()
     
     t = round(len(dataset_train)*test_size)
@@ -302,7 +337,7 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
 torch.cuda.empty_cache()
 
 
-# In[18]:
+# In[21]:
 
 
 device = torch.device('cuda:0')
@@ -310,12 +345,14 @@ device = torch.device('cuda:0')
 
 # ### тут пример того, как преобразовать данные перед передачей в модель
 
-# In[62]:
+# In[26]:
 
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
 
-train, test = data_loader(batch_size = 1, getTrainTransform(), test_size = 0.2)
+train, test = data_loader(batch_size = 1, transform = get_transform(), test_size = 0.2) 
+# или для yolo
+# train, test = data_loader(batch_size = 1, transform = get_transform_yolo(), test_size = 0.2, yolo = True) 
 
 model.to(device)
 
@@ -343,7 +380,7 @@ with torch.no_grad():
         break
 
 
-# In[63]:
+# In[27]:
 
 
 print(out)
