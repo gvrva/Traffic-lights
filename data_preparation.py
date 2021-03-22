@@ -16,7 +16,7 @@
 
 # Больше ничего с файлами делать не требуется
 
-# In[17]:
+# In[2]:
 
 
 import cv2 as cv
@@ -52,7 +52,7 @@ print(torch.__version__)
 
 # ### Создание класса датасета
 
-# In[25]:
+# In[26]:
 
 
 class Dataset(object):
@@ -97,8 +97,6 @@ class Dataset(object):
             img_path = "LISA/dayTrain/dayTrain/"+img_folder+"/frames/"+self.imgs[idx]
             frame_df = self.df[self.df["Filename"]=="dayTraining/"+self.imgs[idx]]
             
-            
-            
         img = cv.imread(img_path)
         img = cv.cvtColor(img, cv.COLOR_BGR2RGB)/255
         
@@ -118,10 +116,10 @@ class Dataset(object):
         
         for i in range(num_objs):
             if self.yolo:
-                boxes.append([round((x_min[i]+x_max[i])/2),
-                             round((y_min[i]+y_max[i])/2),
-                             x_min[i]-x_max[i],
-                             y_min[i]+y_max[i]])
+                boxes.append([((x_min[i]+x_max[i])/2)/img.shape[1],
+                             ((y_min[i]+y_max[i])/2)/img.shape[0],
+                             (x_min[i]-x_max[i])/img.shape[1],
+                             (y_min[i]+y_max[i])/img.shape[0]])
                 labels.append(label_dict_coco[light[i]])
             else:
                 boxes.append([x_max[i], y_max[i], x_min[i], y_min[i]])
@@ -162,14 +160,14 @@ class Dataset(object):
         return len(self.imgs)
 
 
-# In[10]:
+# In[27]:
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-# In[11]:
+# In[28]:
 
 
 def get_transform():
@@ -179,7 +177,7 @@ def get_transform():
     ], bbox_params=A.BboxParams(format = 'pascal_voc', label_fields=['labels'], min_visibility = 0.5))
 
 
-# In[19]:
+# In[29]:
 
 
 def get_transform_yolo():
@@ -189,7 +187,7 @@ def get_transform_yolo():
     ], bbox_params=A.BboxParams(format = 'yolo', label_fields=['labels'], min_visibility = 0.5))
 
 
-# In[18]:
+# In[30]:
 
 
 def data_loader(batch_size, transform = None, test_size = 0.2, yolo = False):
@@ -213,7 +211,7 @@ def data_loader(batch_size, transform = None, test_size = 0.2, yolo = False):
 
 # # Предсказание для видео
 
-# In[84]:
+# In[31]:
 
 
 def affect(boxes, height, width):
@@ -241,11 +239,34 @@ def affect(boxes, height, width):
     return affect_array
 
 
-# In[77]:
+# In[85]:
+
+
+def check_similarity(prev_image, curr_image, boxes):
+    prev_image = cv.cvtColor(prev_image, cv.COLOR_BGR2GRAY)
+    curr_image = cv.cvtColor(curr_image, cv.COLOR_BGR2GRAY)
+    for box in boxes:
+
+        cropped_current_image = curr_image[box[0]:box[2],box[1]:box[3]]
+        cropped_previous_image = prev_image[box[0]:box[2],box[1]:box[3]]
+
+        cropped_current_image_norm = cropped_current_image/255.
+        cropped_previous_image_norm = cropped_previous_image/255.
+
+        similarity_rate = abs(np.sum(cropped_current_image_norm-cropped_previous_image_norm)/((box[2]-box[0])*(box[3]-box[1])))
+        #print(similarity_rate)
+        if similarity_rate<0.0015:
+            continue
+        else:
+            return False
+    return True
+
+
+# In[86]:
 
 
 #без сглаживания
-def video_predict(path, json_path, model, device):
+def video_predict(path, json_path, model, device, yolo = False):
     
     #path - путь к видео
     #json_path - путь, где сохранится json файл в формате "folder(если нужна папка)/file_name.txt"
@@ -257,11 +278,22 @@ def video_predict(path, json_path, model, device):
     model.eval()
     i=0
     colors = {1: "red", 2: "yellow", 3: "green", 4: "unknown"}
+    boxes_previous = None
+    image_previous = None
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+        #определение похожести 
+        if image_previous is not None:
+            similar = check_similarity(image_previous.copy(), frame.copy(), boxes)
+            if similar:
+                dict_predictions[i] = dict_predictions[i-1]
+                i+=1
+                continue
+            
         with torch.no_grad():
+            image_previous = frame.copy()
             frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)/255
             width = frame.shape[1]
             height = frame.shape[0]
@@ -270,8 +302,19 @@ def video_predict(path, json_path, model, device):
             
             prediction = model(frame)
             dict_predictions[i]=[]
-            boxes = prediction[0]['boxes'].cpu().numpy().astype(np.int32)
             
+            if yolo:
+                boxes = prediction[0]['boxes'].cpu().numpy()
+                boxes_fixed = np.zeros_like(boxes_original, dtype = float)
+                boxes_fixed[:,0] = (boxes[:,0]-boxes[:,2]/2)*width
+                boxes_fixed[:,1] = (boxes[:,1]-boxes[:,3]/2)*height
+                boxes_fixed[:,2] = boxes_fixed[:,0]+boxes[:,2]*width
+                boxes_fixed[:,3] = boxes_fixed[:,1]+boxes[:,3]*height
+                boxes = boxes_fixed
+            else:
+                boxes = prediction[0]['boxes'].cpu().numpy().astype(np.int32)
+                
+            boxes_previous = boxes.copy()
             affect_list = affect(boxes, height, width)
             
             for j, box in enumerate(boxes):
@@ -294,9 +337,15 @@ def video_predict(path, json_path, model, device):
         json.dump(dict_predictions, outfile)
 
 
+# In[ ]:
+
+
+
+
+
 # # Создание видео с box'ами
 
-# In[96]:
+# In[36]:
 
 
 def video_display(source_video_path, target_video, vid_boxes, fps = 24):
@@ -376,7 +425,7 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
 torch.cuda.empty_cache()
 
 
-# In[21]:
+# In[24]:
 
 
 device = torch.device('cuda:0')
@@ -384,7 +433,7 @@ device = torch.device('cuda:0')
 
 # ### тут пример того, как преобразовать данные перед передачей в модель
 
-# In[26]:
+# In[34]:
 
 
 model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -433,28 +482,16 @@ print(out)
 
 # ## Предсказания для видео
 
-# In[48]:
+# In[87]:
 
 
 get_ipython().run_cell_magic('time', '', 'video_predict("phase_1/video_0.MP4", "phase_1/video_0.txt", model, device) #пример использования')
 
 
-# In[55]:
+# In[88]:
 
 
 video_display("phase_1/video_0.MP4", "phase_1/video_0_boxes.MP4", "phase_1/video_0.txt", fps = 1)
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
 
 
 # In[ ]:
