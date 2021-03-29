@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[7]:
 
 
 import cv2 as cv
@@ -9,33 +9,26 @@ import torch
 import os
 import numpy as np
 import json
+import copy
 
 
-# In[2]:
+# In[50]:
 
 
 def affect(boxes, width):
     distances = []
-    areas = []
     for box in boxes:
-        areas.append((int(box[3])-int(box[1]))*(int(box[2]) - int(box[0])))
-    max_area = max(areas)
-    for i, area in enumerate(areas):
-        if max_area/area>=3.5:
-            areas[i]=0
-            distances.append(1000)
-        else:
-            d = abs((int(boxes[i][2])+int(boxes[i][0]))/2.-width/2.)
-            if d == 0:
-                d = 1
-            distances.append(d)
+        d = abs((box[2]+box[0])/2.-width/2.)
+        if d == 0:
+            d = 1
+        distances.append(d)
     affect_index_1 = distances.index(min(distances))
     if len(distances)==1:
         return [True]
     distances_new = distances.copy()
     distances_new[affect_index_1]=2000
     affect_index_2 = distances.index(min(distances_new))
-    if boxes[affect_index_1][2]>=boxes[affect_index_2][2] and distances[affect_index_2]/distances[affect_index_1]<=1.5:
+    if boxes[affect_index_1][3]>=boxes[affect_index_2][3] and distances[affect_index_2]/distances[affect_index_1]<=1.5:
         affect_index = affect_index_2
     else:
         affect_index = affect_index_1
@@ -48,7 +41,7 @@ def affect(boxes, width):
     return affect_array
 
 
-# In[ ]:
+# In[63]:
 
 
 def interpolation(dict_predict, frame_width, frame_height):
@@ -72,15 +65,15 @@ def interpolation(dict_predict, frame_width, frame_height):
     # это позволит не вычислять при пересчете координат 
     dict_j = {}
     
-    frame_numbers = interpolated_predict.keys()
+    frame_numbers = list(map(str,sorted(list(map(int,interpolated_predict.keys())))))
     
     next_id = 0
-    for frame_number in sorted(list(frame_numbers)):
+    for frame_number in frame_numbers:
         updated_tl = set()
         new_tl = set()
         for key in interpolated_predict[frame_number].keys():
             box = interpolated_predict[frame_number][key]
-            coord = list(map(int, box['coords']))
+            coord = box['coords']
             old_point = False
             if coord[0]<=2 or coord[2]<=2 or coord[1]>=frame_width-2 or coord[3]>=frame_height-2:
                 continue
@@ -89,7 +82,7 @@ def interpolation(dict_predict, frame_width, frame_height):
             
             # обновление текущих точек
             for point_key in curr_points.keys():
-                if curr_points[point_key][2]>cx and curr_points[point_key][0]<cx and curr_points[point_key][3]>cy and curr_points[point_key][1]<cy and frame_number-curr_points[point_key][4]<=15:
+                if curr_points[point_key][2]>cx and curr_points[point_key][0]<cx and curr_points[point_key][3]>cy and curr_points[point_key][1]<cy and int(frame_number)-int(curr_points[point_key][4])<=15:
                     old_point = True
                     curr_points[point_key] = [coord[0], coord[1], coord[2], coord[3], frame_number]                            
                     dict_j[point_key][frame_number] = key
@@ -109,7 +102,7 @@ def interpolation(dict_predict, frame_width, frame_height):
         # если бокс не обновлен, то добавляеся в dict_key_points
         first_last_boxes = list(set(curr_points.keys())-updated_tl)
         for key in first_last_boxes:
-            if frame_number - curr_points[key][4]>15:
+            if int(frame_number) - int(curr_points[key][4])>15:
                 dict_key_points[key].append(curr_points[key])
                 curr_points.pop(key)
             
@@ -117,7 +110,7 @@ def interpolation(dict_predict, frame_width, frame_height):
             dict_key_points[key].append(curr_points[key])
             
         # теперь запись оставшихся боксов в dict_key_points, если кадр 30-ый
-        if frame_number%30==0:
+        if int(frame_number)%30==0:
             for key in list(set(curr_points.keys()-new_tl)):
                 dict_key_points[key].append(curr_points[key])
                 
@@ -129,7 +122,7 @@ def interpolation(dict_predict, frame_width, frame_height):
         start_width = key_boxes[0][2]-key_boxes[0][0]
         start_height = key_boxes[0][3]-key_boxes[0][1]
         
-        if key_boxes[-1][4]-key_boxes[0][4]<2:
+        if int(key_boxes[-1][4])-int(key_boxes[0][4])<2:
             for kb in range(len(key_boxes)):
                 if key_boxes[kb][4] in interpolated_predict.keys():
                     if dict_j[key][key_boxes[kb][4]] in interpolated_predict[key_boxes[kb][4]].keys():
@@ -140,15 +133,15 @@ def interpolation(dict_predict, frame_width, frame_height):
         
         for kb in range(len(key_boxes)-1):
             
-            if 2*(key_boxes[kb+1][4]-key_boxes[kb][4])==0:
+            if 2*(int(key_boxes[kb+1][4])-int(key_boxes[kb][4]))==0:
                 side_change = 1        
             else:
                 area_start = (key_boxes[kb][2]-key_boxes[kb][0])*(key_boxes[kb][3]-key_boxes[kb][1])
                 area_end = (key_boxes[kb+1][2]-key_boxes[kb+1][0])*(key_boxes[kb+1][3]-key_boxes[kb+1][1])
-                side_change = (area_end/area_start)**(1/(2*(key_boxes[kb+1][4]-key_boxes[kb][4])))
+                side_change = (area_end/area_start)**(1/(2*(int(key_boxes[kb+1][4])-int(key_boxes[kb][4]))))
             
             
-            frame_count = key_boxes[kb+1][4]-key_boxes[kb][4]
+            frame_count = int(key_boxes[kb+1][4])-int(key_boxes[kb][4])
             if frame_count == 0:
                 continue
             # покадровое изменение каждой координаты светофора
@@ -161,33 +154,33 @@ def interpolation(dict_predict, frame_width, frame_height):
             width = key_boxes[kb][2]-key_boxes[kb][0]
             height = start_height*(width/start_width)
             
-            frame_number = key_boxes[kb][4]
+            frame_number = int(key_boxes[kb][4])
             for i in range(frame_count):
                 new_x_left = (start_cx + dx*i)-(width*(side_change**i))/2
                 new_y_left = (start_cy + dy*i)-(height*(side_change**i))/2
                 new_x_right = (start_cx + dx*i)+(width*(side_change**i))/2
                 new_y_right = (start_cy + dy*i)+(height*(side_change**i))/2
-                if frame_number+i in interpolated_predict.keys():
-                    if frame_number+i in dict_j[key].keys():
-                        interpolated_predict[frame_number+i][dict_j[key][frame_number+i]]['coords']=list(map(str,[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]))
+                if str(frame_number+i) in interpolated_predict.keys():
+                    if str(frame_number+i) in dict_j[key].keys():
+                        interpolated_predict[str(frame_number+i)][dict_j[key][str(frame_number+i)]]['coords']=[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]
                     else:
-                        max_key = max(list(interpolated_predict[frame_number+i].keys()))
-                        interpolated_predict[frame_number+i][max_key+1] = copy.deepcopy(interpolated_predict[frame_number+i-1][dict_j[key][frame_number+i-1]])
-                        interpolated_predict[frame_number+i][max_key+1]['coords']=list(map(str,[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]))
-                        dict_j[key][frame_number+i] = max_key+1
+                        max_key = max(list(map(int,list(interpolated_predict[str(frame_number+i)].keys()))))
+                        interpolated_predict[str(frame_number+i)][str(max_key+1)] = copy.deepcopy(interpolated_predict[str(frame_number+i-1)][dict_j[key][str(frame_number+i-1)]])
+                        interpolated_predict[str(frame_number+i)][str(max_key+1)]['coords']=[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]
+                        dict_j[key][str(frame_number+i)] = str(max_key+1)
                 else:
-                    interpolated_predict[frame_number+i] = {}
-                    interpolated_predict[frame_number+i][0] = copy.deepcopy(interpolated_predict[frame_number+i-1][dict_j[key][frame_number+i-1]])
-                    interpolated_predict[frame_number+i][0]['coords']=list(map(str,[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]))
-                    dict_j[key][frame_number+i] = 0
+                    interpolated_predict[str(frame_number+i)] = {}
+                    interpolated_predict[str(frame_number+i)]['0'] = copy.deepcopy(interpolated_predict[str(frame_number+i-1)][dict_j[key][str(frame_number+i-1)]])
+                    interpolated_predict[str(frame_number+i)]['0']['coords']=[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]
+                    dict_j[key][str(frame_number+i)] = '0'
             
             if kb == len(key_boxes)-2:
-                frame_number = key_boxes[kb+1][4]
+                frame_number = str(key_boxes[kb+1][4])
                 new_x_left = (start_cx + dx*frame_count)-(width*(side_change**frame_count))/2
                 new_y_left = (start_cy + dy*frame_count)-(height*(side_change**frame_count))/2
                 new_x_right = (start_cx + dx*frame_count)+(width*(side_change**frame_count))/2
                 new_y_right = (start_cy + dy*frame_count)+(height*(side_change**frame_count))/2
-                interpolated_predict[frame_number][dict_j[key][frame_number]]['coords']=list(map(str,[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]))
+                interpolated_predict[frame_number][dict_j[key][frame_number]]['coords']=[int(new_x_left), int(new_y_left), int(new_x_right), int(new_y_right)]
     # расчет affect
     for frame in interpolated_predict.keys():
         box_keys = list(interpolated_predict[frame].keys())
@@ -196,12 +189,12 @@ def interpolation(dict_predict, frame_width, frame_height):
             boxes.append(interpolated_predict[frame][box_key]['coords'])
         affect_list = affect(boxes, frame_width)
         for i, box_key in enumerate(box_keys):
-            interpolated_predict[frame][box_key]['affect'] = str(affect_list[i])
+            interpolated_predict[frame][box_key]['affect'] = affect_list[i]
     
     return interpolated_predict
 
 
-# In[3]:
+# In[64]:
 
 
 #без сглаживания
@@ -217,12 +210,14 @@ def txt_to_json(video_name, path_to_txt, path_to_video, json_path):
     frame_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
 
     all_txt = list(sorted(os.listdir(path_to_txt)))
+    if path_to_txt[-1] != '/':
+        path_to_txt = path_to_txt+'/'
     txt = [t for t in all_txt if video_name in t]
     dict_predictions = {}
     colors = {2: "red", 1: "yellow", 0: "green"}
 
     for t in txt:
-        i = int(t[len(video_name)+1:-4])
+        i = str(int(t[len(video_name)+1:-4]))
         with open(path_to_txt+t) as f:
             boxes = f.readlines()
 
@@ -240,16 +235,16 @@ def txt_to_json(video_name, path_to_txt, path_to_video, json_path):
                 x_right = box[1]*frame_width+width/2
                 y_right = box[2]*frame_height+height/2
 
-                dict_predictions[i][j] = {}
-                curr_box = list(map(str,[int(x_left), int(y_left), int(x_right), int(y_right)]))
+                dict_predictions[i][str(j)] = {}
+                curr_box = [int(x_left), int(y_left), int(x_right), int(y_right)]
 
-                dict_predictions[i][j]["coords"] = curr_box
+                dict_predictions[i][str(j)]["coords"] = curr_box
 
                 color = box[0]
                 if color not in colors.keys():
-                    dict_predictions[i][j]["state"] = "unknown"
+                    dict_predictions[i][str(j)]["state"] = "unknown"
                 else:
-                    dict_predictions[i][j]["state"] = colors[color]
+                    dict_predictions[i][str(j)]["state"] = colors[color]
     
     final_predictions = interpolation(dict_predictions, frame_width, frame_height)
     
@@ -258,14 +253,14 @@ def txt_to_json(video_name, path_to_txt, path_to_video, json_path):
     return final_predictions
 
 
-# In[5]:
+# In[65]:
 
 
 def video_display(source_video_path, target_video, vid_boxes, fps = 24):
     cap = cv.VideoCapture(source_video_path)
     width  = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-    i=0
+    i=1
     out = cv.VideoWriter(target_video,cv.VideoWriter_fourcc(*'DIVX'), fps, (width, height))
     with open(vid_boxes) as json_file:
         data = json.load(json_file)
@@ -295,7 +290,7 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
         for box, color, affect in zip(boxes, colors, affects):
             
             cv.rectangle(frame, (box[2], box[3]), (box[0], box[1]), color, 2)
-            if affect == 'True':
+            if affect == True:
                 text_color = tuple([70 if c==255 else c for c in color])
                 frame = cv.putText(frame, 'affect', (box[0], box[3]+20), fontFace = cv.FONT_HERSHEY_SIMPLEX,
                                    fontScale = 0.6, thickness = 2, color = text_color)
@@ -308,14 +303,26 @@ def video_display(source_video_path, target_video, vid_boxes, fps = 24):
 
 # ## Пример использования
 
-# In[ ]:
+# In[66]:
 
 
 predictions = txt_to_json('video_3', 'labels/', 'phase_1/video_3.MP4', 'video_3_json_interpolation.txt')
 
 
+# In[67]:
+
+
+print(predictions)
+
+
+# In[68]:
+
+
+video_display("phase_1/video_3.MP4", "phase_1/video_3_boxes_1.MP4", "video_3_json_interpolation.txt", fps = 30)
+
+
 # In[ ]:
 
 
-video_display("phase_1/video_3.MP4", "phase_1/video_3_boxes.MP4", "video_3_json_interpolation", fps = 30)
+
 
