@@ -25,15 +25,15 @@
 1. В этих директориях создать две поддиректории images и labels. В images нужно будет перенести картинки (img.png), а в labels соответствующий ему файл с разметкой (img.txt название такое же) в специальном формате. Формат разметки следующий: 
  - Каждому светофору на картинке соответствует одна строка: class, x_scaled, y_scaled, width, height
  - class - метка класса (в нашем случае 0 - зеленый, 1 - желтый, 2 - красный)
- - x_scaled, y_scaled - отнормированные координаты центра bounding box'а на длину и ширину изображения (x_scaled = x\image_width, y_scaled = y\image_height
- - width, height - отнормированная ширина и высота bounding box'а (width = width_box\image_width, heigth = heigth_box\image_height)
+ - x_scaled, y_scaled - отнормированные координаты центра bounding box'а на длину и ширину изображения (x_scaled = x/image_width, y_scaled = y/image_height
+ - width, height - отнормированная ширина и высота bounding box'а (width = width_box/image_width, heigth = heigth_box/image_height)
  
 Для каждого источника данных был реализован свой код перевода данных в нужный формат, так как разметка и сама схема хранения данных отличается у источников
 
 #### LISA 
 Переходим в папку проекта и в папку проекта скачиваем датасет по ссылке: https://www.kaggle.com/mbornoe/lisa-traffic-light-dataset. После подготавливаем и сохраняем данные опираясь на YOLO_data.ipynb 
 #### BSTL
-Переходим в папку проекта и в папку проекта скачиваем датасет. Инструкцию по скачиванию можно найти по ссылке: https://hci.iwr.uni-heidelberg.de/content/bosch-small-traffic-lights-dataset
+Переходим в папку проекта и в папку проекта скачиваем датасет. Инструкцию по скачиванию можно найти по ссылке: https://hci.iwr.uni-heidelberg.de/content/bosch-small-traffic-lights-dataset. После подготавливаем данные на основе BSTL_data.ipynb.
 #### COCO 
 Так как в данных COCO есть светофоры, но нет их цвета была проведена процедура ручной разметки светофоров. Их общее количество около 500 картинок и загружены в train часть.
 
