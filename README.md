@@ -1,7 +1,17 @@
-# Datasets
-1. [COCO Dataset](https://cocodataset.org/#download)
-2. [LISA Traffic Lights Dataset](https://www.kaggle.com/mbornoe/lisa-traffic-light-dataset)
-3. [Bosch Dataset](https://hci.iwr.uni-heidelberg.de/content/bosch-small-traffic-lights-dataset)
+# Как использовать обученную yolov5l для своих видео
 
-# Tutorials, articles etc
-1. [TORCHVISION OBJECT DETECTION FINETUNING TUTORIAL](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html)
+Для предсказания на пользовательских видео необходимо подключить модель predict.py с помощью 
+```python
+import predict
+```
+Таким образом можно использовать функции из этого модуля. Модель yolo для полученных весов строится с помощью команды
+```python
+model = torch.hub.load('ultralytics/yolov5', 'custom', 'path_to_weight_file', force_reload=True)
+```
+Пример процесса предсказания и воспроизведения результатов
+Таким образом можно использовать функции из этого модуля. Модель yolo для полученных весов строится с помощью команды
+```python
+model = torch.hub.load('ultralytics/yolov5', 'custom', 'bosch_2ep.pt', force_reload=True)
+video_predict("video_0.MP4", "video_0.json", model)
+video_display("video_0.MP4", "video_0_boxes.MP4", "video_0.json")
+```
