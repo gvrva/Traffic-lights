@@ -49,6 +49,8 @@ def affect(boxes, width):
     distances_new = copy.deepcopy(distances)
     distances_new[affect_index_1]=2000
     affect_index_2 = distances.index(min(distances_new))
+    # if the nearest traffic light is under the second one and they are not far from each other,
+    # it means that the nearest traffic light is far and cannot affect
     if boxes[affect_index_1][1]>=boxes[affect_index_2][3] and distances[affect_index_2]<=distances[affect_index_1]*1.5:
         affect_index = affect_index_2
     else:
@@ -228,21 +230,34 @@ def interpolation(dict_predict, frame_width, frame_height):
                     start_frame = frame
                     color = interpolated_predict[frame][box_key]['state']
                     count = 1
+                    prev_box = interpolated_predict[frame][box_key]['coords']
                 elif color == interpolated_predict[frame][box_key]['state']:
                     count +=1
+                    prev_box = interpolated_predict[frame][box_key]['coords']
                 elif color != interpolated_predict[frame][box_key]['state']:
-                    if count>30:
-                        interpolated_predict[frame][box_key]['affect'] = False
-                        start_frame = None
-                        color = None
-                        count = 0
-                        pause = 15
+                    cx = (interpolated_predict[frame][box_key]['coords'][0]+interpolated_predict[frame][box_key]['coords'][2])/2.
+                    cy = (interpolated_predict[frame][box_key]['coords'][1]+interpolated_predict[frame][box_key]['coords'][3])/2.
+                    
+                    # if the same traffic light changes the color it continue to be detected as affect True
+                    # without further delay in detecting affect
+                    if cx > prev_box[0] and cx < prev_box[1] and cy > prev_box[1] and cy < prev_box[3]:
+                        start_frame = frame
+                        color = interpolated_predict[frame][box_key]['state']
+                        count = 1
+                        prev_box = interpolated_predict[frame][box_key]['coords']
                     else:
-                        interpolated_predict[frame][box_key]['affect'] = False
-                        start_frame = None
-                        color = None
-                        count = 0
-                        pause = 30
+                        if count>30:
+                            interpolated_predict[frame][box_key]['affect'] = False
+                            start_frame = None
+                            color = None
+                            count = 0
+                            pause = 15
+                        else:
+                            interpolated_predict[frame][box_key]['affect'] = False
+                            start_frame = None
+                            color = None
+                            count = 0
+                            pause = 30
     
     return interpolated_predict
 
