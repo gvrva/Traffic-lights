@@ -23,10 +23,10 @@
 1. В директории с проектом (Traffic_lights) создаем папку для данных Data
 1. В Data создать две директории train и val 
 1. В этих директориях создать две поддиректории images и labels. В images нужно будет перенести картинки (img.png), а в labels соответствующий ему файл с разметкой (img.txt название такое же) в специальном формате. Формат разметки следующий: 
- - Каждому светофору на картинке соответствует одна строка: $class, x_{scaled}, y_{scaled}, width, height$
+ - Каждому светофору на картинке соответствует одна строка: class, x_scaled, y_scaled, width, height
  - class - метка класса (в нашем случае 0 - зеленый, 1 - желтый, 2 - красный)
- - $x_{scaled}, y_{scaled}$ - отнормированные координаты центра bounding box'а на длину и ширину изображения ($x_{scaled} = \frac{x}{image\_width}$, $y_{scaled} = \frac{y}{image\_height}$
- - width, height - отнормированная ширина и высота bounding box'а ($width = \frac{width\_box}{image\_width}$, $heigth = \frac{heigth\_box}{image\_height}$)
+ - x_scaled, y_scaled - отнормированные координаты центра bounding box'а на длину и ширину изображения (x_scaled = x\image_width, y_scaled = y\image_height
+ - width, height - отнормированная ширина и высота bounding box'а (width = width_box\image_width, heigth = heigth_box\image_height)
  
 Для каждого источника данных был реализован свой код перевода данных в нужный формат, так как разметка и сама схема хранения данных отличается у источников
 
