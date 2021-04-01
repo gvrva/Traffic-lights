@@ -11,7 +11,8 @@ model = torch.hub.load('ultralytics/yolov5', 'custom', 'path_to_weight_file', fo
 Пример процесса предсказания и воспроизведения результатов
 Таким образом можно использовать функции из этого модуля. Модель yolo для полученных весов строится с помощью команды
 ```python
+import predict
 model = torch.hub.load('ultralytics/yolov5', 'custom', 'bosch_2ep.pt', force_reload=True)
-video_predict("video_0.MP4", "video_0.json", model)
-video_display("video_0.MP4", "video_0_boxes.MP4", "video_0.json")
+predict.video_predict("video_0.MP4", "video_0.json", model)
+predict.video_display("video_0.MP4", "video_0_boxes.MP4", "video_0.json")
 ```
