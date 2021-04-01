@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import cv2 as cv
 import torch
 import os
@@ -11,10 +5,6 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 import copy
-
-
-# In[ ]:
-
 
 def affect(boxes, width):
     """
@@ -62,10 +52,6 @@ def affect(boxes, width):
         else:
             affect_array.append(False)
     return affect_array
-
-
-# In[1]:
-
 
 def interpolation(dict_predict, frame_width, frame_height):
     """
@@ -261,10 +247,6 @@ def interpolation(dict_predict, frame_width, frame_height):
     
     return interpolated_predict
 
-
-# In[2]:
-
-
 def check_similarity(prev_image, curr_image, boxes):
     """
     Calculates the similarity between current frame and previous one in bounding boxes parts.
@@ -292,10 +274,6 @@ def check_similarity(prev_image, curr_image, boxes):
         else:
             return False
     return True
-
-
-# In[3]:
-
 
 def video_predict(path, json_path, model):
     """
@@ -379,10 +357,6 @@ def video_predict(path, json_path, model):
     with open(json_path, 'w') as outfile:
         json.dump(final_predictions, outfile)
 
-
-# In[ ]:
-
-
 def video_display(source_video_path, target_video, boxes_path):
     """
     Diaplay predicted bounding boxes on the source video.
@@ -439,10 +413,3 @@ def video_display(source_video_path, target_video, boxes_path):
         i += 1
         
     out.release()
-
-
-# In[ ]:
-
-
-
-
